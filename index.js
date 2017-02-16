@@ -1,6 +1,7 @@
 'use strict';
 
 var firebase = require('firebase-admin');
+require("./jDBSCAN.js");
 
 // Initialize the app with a service account, granting admin privileges
 firebase.initializeApp({
@@ -13,64 +14,35 @@ firebase.initializeApp({
 });
 
 /**
- * Send a new star notification email to the user with the given UID.
- */
-// [START single_value_read]
-function sendNotificationToUser(uid, postId) {
-  // Fetch the user's email.
-  var userRef = firebase.database().ref('/users/' + uid);
-  userRef.once('value').then(function(snapshot) {
-    var email = snapshot.val().email;
-    // Send the email to the user.
-    // [START_EXCLUDE]
-    if (email) {
-      sendNotificationEmail(email).then(function() {
-        // Save the date at which we sent that notification.
-        // [START write_fan_out]
-        var update = {};
-        update['/posts/' + postId + '/lastNotificationTimestamp'] =
-            firebase.database.ServerValue.TIMESTAMP;
-        update['/user-posts/' + uid + '/' + postId + '/lastNotificationTimestamp'] =
-            firebase.database.ServerValue.TIMESTAMP;
-        firebase.database().ref().update(update);
-        // [END write_fan_out]
-      });
-    }
-    // [END_EXCLUDE]
-  }).catch(function(error) {
-    console.log('Failed to send notification to user:', error);
-  });
-}
-// [END single_value_read]
-
-
-/**
- * Keep the likes count updated and send email notifications for new likes.
+ * Listen the firebase database for new data points
  */
 function startListeners() {
-  firebase.database().ref('/posts').on('child_added', function(postSnapshot) {
+  firebase.database().ref('/dataPoints').on('child_added', function(postSnapshot) {
+    console.log('New data point received ('+dataset.length+')');
     var postReference = postSnapshot.ref;
-    var uid = postSnapshot.val().uid;
-    var postId = postSnapshot.key;
-    // Update the star count.
-    // [START post_value_event_listener]
-    postReference.child('stars').on('value', function(dataSnapshot) {
-      //updateStarCount(postReference);
-    }, function(error) {
-      console.log('Failed to add "value" listener at /posts/' + postId + '/stars node:', error);
+    var coord = postSnapshot.val();
+    var loc = { "latitude" : coord.latitude, "longitude" :  coord.longitude};
+    var dataToPush = { "location" : loc };   
+    dataset.push(dataToPush);
+    // Eps set to 50 meters = 0.05 km
+    var dbscanner = jDBSCAN().eps(0.05).minPts(1).distance('HAVERSINE').data(dataset);
+    var point_assignment_result = dbscanner();
+    var clusters = dbscanner.getClusters();
+    var centroids = [];
+    clusters.forEach(function(y) 
+    { 
+      var centroid = { "latitude" : y.location.latitude, "longitude" : y.location.longitude};
+      centroids.push(centroid); 
     });
-    // [END post_value_event_listener]
-    // Send email to author when a new star is received.
-    // [START child_event_listener_recycler]
-    postReference.child('stars').on('child_added', function(dataSnapshot) {
-      //sendNotificationToUser(uid, postId);
-    }, function(error) {
-      console.log('Failed to add "child_added" listener at /posts/' + postId + '/stars node:', error);
-    });
-    // [END child_event_listener_recycler]
+    var update = {};
+    update['/centroids'] = centroids;
+    firebase.database().ref().update(update);
   });
   console.log('Server started...');
 }
-
+var dataset = [
+    
+];
+    
 // Start the server.
 startListeners();
