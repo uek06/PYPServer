@@ -1,5 +1,10 @@
 'use strict';
 
+var express = require('express');
+var app = express();
+var port = process.env.PORT || 5000;
+app.listen(port);
+
 var firebase = require('firebase-admin');
 require("./jDBSCAN.js");
 
@@ -32,6 +37,7 @@ function startListeners() {
     clusters.forEach(function(y) 
     { 
       var centroid = { "latitude" : y.location.latitude, "longitude" : y.location.longitude};
+      console.log("centroid : "+centroid.latitude+", "+centroid.longitude);
       centroids.push(centroid); 
     });
     var update = {};
